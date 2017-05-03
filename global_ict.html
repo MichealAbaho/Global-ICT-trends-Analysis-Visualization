@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>World ICT Infrastructure subscriptions</title>
+
+    <!-- Mobile views -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans:300' rel='stylesheet' type='text/css'>
+    <!-- style sheets -->
+    <link href="bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link href="global_ict.css" rel="stylesheet">
+
+</head>
+<body>
+<!-- jQuery plugins -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <!-- Include all compiled plugins (below), or include individual files as needed -->
+    <script type="text/javascript" src="graph.js"></script>
+    <script type="text/javascript" src="colorbrewer.js"></script>
+    <script src="bootstrap/js/bootstrap.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/d3/4.7.1/d3.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/d3-queue/3.0.4/d3-queue.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/topojson/2.2.0/topojson.min.js"></script>
+
+    <nav class="navbar navbar-inverse navbar-fixed-top">
+      <div class="container">
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button>
+        <ul class="nav navbar-nav">
+         <li class="active"><a href="global_ict.html">Global ICT Trends (2000 - 2015)<span class="sr-only">(current)</span></a></li>
+         <li style="top:15px; color: #fff; border: 0px solid #fff;"> | </li>
+         <li>
+           <select id='selected' class="input-lg">
+            <option selected="default">Total Subscriptions per country</option>
+            <option value="mobile">Mobile Subscriptions</option>
+            <option value="fixtel">Landline Phone Subscriptions</option>
+            <option value="fixbrd">Fixed Broadband Subscriptions</option>
+            <option value="internet">Internet Subscriptions</option>
+        </select>
+    </li>
+</ul>
+</div>
+</div>
+</nav>
+
+<div id="vis">
+    <div class="container">
+
+    </div>
+</div>
+
+<div id="ctry_info">
+    <button type="button" value="" onclick=""><span id='countryName'></button>
+      <p>Fixed Telephone subscriptions - <span id="fix_tel"></span> </p>
+      <p>Fixed broadband subscriptions - <span id="fix_brd"></span></p>
+      <p>Mobile subscriptions - <span id="mob_sub"></span></p>
+      <p>Portion of Internet subscribers - <span id="ind_int"></span></p>  
+  <hr id="edge">
+</div>
+
+<div id="viz">
+    <div class="container">  
+    </div>
+</div> 
+
+
+<script>
+    // dimensions of visualisation
+    var width;
+    var height;
+
+    // 'svg' to draw in, 'g' element to group everything together
+    var svg;
+    var g;
+
+    var country_data;
+    var countries;
+    var country_subscriptions;
+    var projection;
+    var path;
+    var max_subscription;
+    var selection;
+    var ict_global_trend;
+    var perCountryData;
+
+    var x_scale = [];
+    var y_scale = [];
+
+    var active = d3.select(null);
+
+    var colscale = d3.scaleQuantile()
+        .range(colorbrewer.Oranges[9]);
+
+    var duration = 2000;
+
+    // initialise the vidualization visualisation
+    var div = d3.select("body").append("div")   
+        .attr("class", "tooltip")               
+        .style("opacity", 0);
+    
+
+    var margin = {top:50, bottom:50, right:50, left:50}
+    width = document.getElementById("vis").clientWidth;
+    height = document.getElementById("vis").clientHeight;
+    console.log(width, height)
+
+    svg = d3.select("#vis")
+        .append("svg")
+        .attr("width", width )
+        .attr("height", height )
+        .append("g");
+
+    projection = d3.geoMercator()
+        .rotate([0,0]);
+
+    path = d3.geoPath()
+        .projection(projection);
+
+    d3.queue()
+        .defer(d3.json, 'countries.json')
+        .defer(d3.csv, '../generated csv files/Summary_per_country.csv')
+        .defer(d3.csv, '../generated csv files/totals_per_country_annually.csv')
+        .await(function(error,  boundary_data, country_sum, per_country_data){            
+            country_data = country_sum;
+            perCountryData = per_country_data
+            /*console.log(country_data);*/
+            colscale.domain(d3.extent(country_sum, function(d){ 
+             return (+(d.total_subscriptions)) 
+         }));
+
+        projection
+            .scale(145)
+            .translate([width/2,height/2]);
+
+
+        
+        $( document ).ready(function() {
+              renderMap();
+        });
+
+        $('select').on('change', function (){
+            console.log(typeof(this.value));
+            selection = (this.value);
+            renderMap();
+        })
+   
+ /* function drawing the map*/
+    function renderMap(){
+
+    	countries = topojson.feature(boundary_data, boundary_data.objects['units']).features
+        ict_global_trend =  svg.selectAll(".universe")
+            .data(countries)
+
+        ict_global_trend
+            .enter()
+            .append('path')
+            .attr('class', 'universe')
+            .attr('d', path)
+            .attr('name', function(d){ return d.properties.name; })
+            .on('mouseover', hover)
+            .on('mouseout', function() {
+                d3.select(this)
+                .style("opacity", 0.8);
+            })
+              .on("click", clicked)
+
+            .merge(ict_global_trend)
+            .transition()
+            .duration(duration)
+            .attr('fill', shadeMap) 
+
+        var legend = svg.selectAll('.legend')
+          .data(colorbrewer.Oranges[9]);
+
+        var newlegend = legend
+          .enter()
+          .append('g')
+          .attr('class', 'legend')
+
+          newlegend.merge(legend)
+	          .append('rect')
+	          .attr('width', 20)
+	          .attr('height', 20)
+	          .attr('x', 220)
+	          .attr('y', function(d, i){ return height - 30 - (i * 20); })
+	          .attr('fill', function(d, i){ return d; })
+	          .attr('stroke', 'black')
+	          .attr('stroke-width', '0.5px')
+            
+
+          newlegend.merge(legend)
+	          .append('text')
+	          .attr('x', 160)
+	          .attr('y', height - 205)
+	          .text('Subscriptions in Millions')
+	          .attr('class', 'legend-header')
+          
+
+          newlegend.merge(legend)
+	          .append('text')
+	          .attr('x', 250)
+	          .attr('y', function(d, i){ return height - 15 - (i * 20); })
+	          .text(function(d){
+	            var low = colscale.invertExtent(d)[0];
+	            var high = colscale.invertExtent(d)[1];
+	            /*console.log(low, '\n',high)*/
+	            return  "> " + Math.round(low/1000000) + "";
+        })
+          .attr('font-size', "13px")
+          .attr("stroke", "#000");  
+
+           /*Create legend for the visualization*/
+        var map_detail1 = "'Over half of the world's subscriptions"
+        var map_detail2 = "of mobile, landline phones, broadband and"
+        var map_detail3 = " Internet infrastructure were recorded in Asia.'"
+        var annotate = [{"Africa":'8%', "Asia":"51%", "Europe":"20%", "North_America":"12%", "South_America":"8%", "Oceania":"1%"}]
+        var annotation = svg.selectAll('.annotation')
+        	.data(annotate)
+
+        var annotate1 = annotation
+        	.enter()
+        	.append('g')
+       		.append('text')
+          .style('stroke-width', 2.2)
+        annotate1.merge(annotation)
+            .transition()
+            .duration(duration)
+            .attr("transform", "translate(" + ((width/2) - margin.left) +  "," + ((height/2) + margin.bottom) + ")")
+            .text(function(d){return d.Africa})
+            .attr('class', 'annotation')
+            .attr('stroke', '#615B58')
+            
+            
+
+         var annotate2 = annotation
+        	.enter()
+        	.append('g')
+       		.append('text')
+          .attr('stroke', '#615B58')
+          .style('stroke-width', 2.2)
+          .transition()
+            .duration(duration)
+        	.attr("transform", "translate(" + (width - (width/5)) +  "," + ((height/2) - (margin.bottom + margin.top)) + ")")
+            .text(function(d){return d.Asia})
+            .attr('class', 'annotation')
+            
+
+         var annotate3 = annotation
+        	.enter()
+        	.append('g')
+       		.append('text')
+          .attr('stroke', '#615B58')
+          .style('stroke-width', 2.2) 
+          .transition()
+            .duration(duration)       	
+          .attr("transform", "translate(" + ((width/2) - margin.left - margin.right) +  "," + ((height/2) - margin.bottom - margin.top - 10) + ")")
+            .text(function(d){return d.Europe})
+            .attr('class', 'annotation')
+            
+
+         var annotate4 = annotation
+        	.enter()
+        	.append('g')
+       		.append('text')
+          .attr('stroke', '#615B58')
+          .style('stroke-width', 2.2) 
+          .transition()
+            .duration(duration)
+            .attr("transform", "translate(" + ((width/5)) +  "," + ((height/2) - margin.bottom - margin.top) + ")")
+            .text(function(d){return d.North_America})
+            .attr('class', 'annotation')
+            
+
+         var annotate5 = annotation
+        	.enter()
+        	.append('g')
+       		.append('text')
+          .attr('stroke', '#615B58')
+          .style('stroke-width', 2.2)
+          .transition()
+            .duration(duration)
+        	.attr("transform", "translate(" + ((width/4) + margin.left + margin.right) +  "," + ((height/1.5)) + ")")
+            .text(function(d){return d.South_America})
+            .attr('class', 'annotation')
+            
+
+         var annotate5 = annotation
+        	.enter()
+        	.append('g')
+       		.append('text')
+          .attr('stroke', '#615B58')
+            .style('stroke-width', 2.2)
+            .transition()
+            .duration(duration)
+        	.attr("transform", "translate(" + ((width/2) + (margin.left*2) + (margin.right*4)) +  "," + ((height) - margin.bottom - margin.top - 60) + ")")
+            .text(function(d){return d.Oceania})
+            .attr('class', 'annotation')
+            
+          var h = height/2 - margin.bottom
+          var annotate5 = annotation
+        	.enter()
+        	.append('g')
+       		.append('text')
+          .attr('stroke', '#333')
+          .style('stroke-width', 2.2)
+          .style('opacity', 0.7)
+          .style('font-size', '16.5px')
+          .attr('font-style', "italic")
+        	.attr('x', 20)
+	        .attr('y', h)
+          .append('tspan')
+            .text(map_detail1)
+            
+            .attr('class', 'annotation-text')
+
+          var annotate5 = annotation
+          .enter()
+          .append('g')
+          .append('text')
+          .attr('stroke', '#333')
+            .style('stroke-width', 2.2)
+            .style('font-size', '16.5px')
+          .attr('font-style', "italic")
+          .style('opacity', 0.7)
+          .attr('x', 20)
+          .attr('y', h + (margin.bottom/2))
+          .append('tspan')
+            .text(map_detail2)
+            
+            .attr('class', 'annotation-text')
+
+          var annotate5 = annotation
+          .enter()
+          .append('g')
+          .append('text')
+          .attr('stroke', '#333')
+
+          .attr('class', 'annotation-text')
+          .style('font-size', '16.5px')
+          .attr('font-style', "italic")
+          .style('stroke-width', 2.2)
+          .style('opacity', 0.7)
+          .attr('x', 20)
+          .attr('y', h + (margin.bottom))
+          .append('tspan')
+            .text(map_detail3)   
+            
+            
+
+
+    }
+    /* function shading the map*/
+    function shadeMap(d){
+        country_subscriptions = country_data.map(function(d){ return (d.total_subscriptions); });
+        country_name = country_data.map(function(d){ return d.Countries})
+        max_subscription = d3.max(country_subscriptions)
+        colscale.domain([0, max_subscription]);
+        for(var i = 0; i < country_data.length; i++){
+
+            if((selection == "mobile") && (country_data[i].Countries == d.properties.name)){
+
+                return colscale(country_data[i].mob_subscriptions)
+            }
+            else if((selection == "fixtel") && (country_data[i].Countries == d.properties.name)){
+
+                return colscale(country_data[i].fixTel_subscrptions)
+            }
+            else if((selection == "fixbrd") && (country_data[i].Countries == d.properties.name)){
+
+                return colscale(country_data[i].fixedBroadband_subscriptions)
+            }
+            else if((selection == "internet") && (country_data[i].Countries == d.properties.name)){
+
+                return colscale(country_data[i].indInternet_subscriptions*100000)
+            }
+            else{
+                if(country_data[i].Countries == d.properties.name){
+                  return colscale(country_data[i].total_subscriptions)
+
+              }
+
+          }
+      }return '#fff'
+    }           
+
+})
+
+/*Returning null object when reset is triggered*/
+function reset(){
+    active = d3.select(null)
+    d3.select("#ctry_info")
+    .classed("active", false)
+
+    d3.select("#viz")
+    .classed("active", false)
+
+} 
+
+/* action when mouse hovers over element*/
+function hover(d) {
+    d3.select(this).transition()
+        .duration(300).style("opacity", 1);
+    div.transition().duration(300)
+        .style("opacity", 2)
+
+    div.text(d.properties.name)
+        .style("left", (d3.event.pageX) + "px")
+        .style("top", (d3.event.pageY -30) + "px");
+}
+
+/* action when mouse clicks on element*/
+function clicked(d){
+    if(active.node() == this){
+        reset()
+    }
+    else{
+        active = d3.select(this)
+        var fix_tel = "";
+        var fix_brd = "";
+        var ind_int = "";
+        var mob_sub = "";
+        var countryName = "";
+        var no_ctry_info = ""
+
+        d3.select("#ctry_info")
+            .classed("active", true);
+
+        var col_headers = d3.keys(country_data[0]);
+
+        for (var i = 0; i<col_headers.length; i++){
+            if((col_headers[i] != "Countries") && (col_headers[i] != "total_subscriptions")){
+                x_scale.push(col_headers[i])
+            }
+        }
+        for(var i = 0; i < country_data.length; i++){                      
+            if(country_data[i].Countries == d.properties.name){
+                 countryName = d.properties.name;
+                 fix_tel  = Math.round(country_data[i].fixTel_subscrptions);
+                 fix_brd  = Math.round(country_data[i].fixedBroadband_subscriptions);
+                 ind_int = Math.round(country_data[i].indInternet_subscriptions);
+                 mob_sub = Math.round(country_data[i].mob_subscriptions);
+             }   
+             else{
+                 no_ctry_info = "Location records were not found"
+             }                         
+     }
+
+     var yValues = [fix_tel, fix_brd, ind_int, mob_sub]  
+     /* console.log(yValues);  */                    
+     
+       if(fix_tel != ""){
+      	d3.select("#countryName")
+        	.text(countryName)
+
+         d3.select("#fix_tel")
+            .text(fix_tel )              
+
+         d3.select("#mob_sub")
+            .text(mob_sub )
+
+         d3.select("#fix_brd") 
+            .text(fix_brd )
+
+         d3.select("#ind_int")
+            .text(((ind_int / 1600) * 100).toFixed(2) + " %")
+      }
+       else {
+       	d3.select("#countryName")
+        	.text("Country subscription records not found")
+       	
+         d3.select("#fix_tel")
+            .text("No records")              
+
+         d3.select("#mob_sub")
+            .text("No records")
+
+         d3.select("#fix_brd") 
+            .text("No records")
+
+         d3.select("#ind_int")
+            .text("No records")  
+                                
+    }
+     
+                                
+    }   
+}
+
+
+
+</script>
+
+</body>
+</html>
